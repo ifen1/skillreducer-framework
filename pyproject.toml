@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "skillreducer"
+version = "0.1.0"
+description = "Structure-aware optimization for LLM agent skills"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["openai>=1.0", "tiktoken>=0.5", "PyYAML>=6"]
+
+[project.scripts]
+skillreducer = "skillreducer.__main__:main"
+
+[tool.setuptools]
+packages = ["skillreducer"]
