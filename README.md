@@ -150,7 +150,19 @@ The tests use temporary bundles and simulated model responses, so no service cre
 
 ## Cite
 
-If you use SkillReducer in research, cite *SkillReducer: Structure-aware Debloating of LLM Agent Skills* (ICSE 2027).
+If you use SkillReducer in research, please cite the [arXiv preprint (v2)](https://arxiv.org/abs/2603.29919v2):
+
+```bibtex
+@misc{gao2026skillreducer,
+  title         = {{SkillReducer}: Optimizing {LLM} Agent Skills for Token Efficiency},
+  author        = {Gao, Yudong and Li, Zongjie and Yuan, Yuanyuan and Ji, Zimo and Ma, Pingchuan and Wang, Shuai},
+  year          = {2026},
+  eprint        = {2603.29919v2},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.SE},
+  url           = {https://arxiv.org/abs/2603.29919v2}
+}
+```
 
 ## License
 
