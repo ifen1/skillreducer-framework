@@ -388,10 +388,19 @@ Rules:
 # ============================================================
 
 def segment_body(body: str) -> list[dict]:
-    """Split body into sections by ## headings."""
+    """Split at level-two headings outside fenced code blocks."""
     sections, current_title, current_lines = [], "intro", []
-    for line in body.split('\n'):
-        if line.startswith('## '):
+    fence = ""
+    for line in body.splitlines():
+        marker = re.match(r"^[ ]{0,3}(\x60{3,}|~{3,})(.*)$", line)
+        if fence:
+            if marker and marker[1][0] == fence[0] and len(marker[1]) >= len(fence) and not marker[2].strip():
+                fence = ""
+            current_lines.append(line)
+        elif marker:
+            fence = marker[1]
+            current_lines.append(line)
+        elif line.startswith('## '):
             if current_lines:
                 sections.append({'title': current_title,
                                   'content': '\n'.join(current_lines).strip()})
@@ -401,7 +410,10 @@ def segment_body(body: str) -> list[dict]:
     if current_lines:
         sections.append({'title': current_title,
                           'content': '\n'.join(current_lines).strip()})
-    return [s for s in sections if s['content'].strip()]
+    populated = [s for s in sections if s['content'].strip()]
+    if not populated and body.strip():
+        return [{"title": "intro", "content": body.strip()}]
+    return populated
 
 
 def classify_section(skill_name: str, title: str, content: str,
@@ -419,18 +431,32 @@ def classify_section(skill_name: str, title: str, content: str,
                 response_format={"type": "json_object"},
                 temperature=0.0,
             )
-            return json.loads(resp.choices[0].message.content).get("items", [])
+            items = json.loads(resp.choices[0].message.content).get("items")
+            valid_types = {"core_rule", "template", "example", "background", "redundant"}
+            if not isinstance(items, list) or not items or not all(
+                isinstance(item, dict)
+                and isinstance(item.get("text"), str)
+                and item["text"].strip()
+                and isinstance(item.get("type"), str)
+                and item["type"] in valid_types
+                for item in items
+            ):
+                raise ValueError("Invalid item classification")
+            return items
         except Exception as e:
             last_err = e
             wait = 2 ** attempt  # 1s, 2s, 4s
-            print(f"    [classify error attempt {attempt+1}/{max_retries}] {e}, retrying in {wait}s...")
-            time.sleep(wait)
+            print(f"    [classify error attempt {attempt+1}/{max_retries}] {e}")
+            if attempt + 1 < max_retries:
+                time.sleep(wait)
     # All retries failed: keep entire content as core_rule to prevent information loss
     print(f"    [classify failed, keeping as core_rule] {last_err}")
     return [{"text": content, "type": "core_rule", "reason": "classification failed, kept as core"}]
 
 
 def _check_faithfulness(original: str, compressed: str) -> tuple:
+    if not compressed.strip():
+        return False, ["Compressed text is empty"]
     if count_tokens(original) < 50:
         return True, []
     try:
@@ -443,13 +469,15 @@ def _check_faithfulness(original: str, compressed: str) -> tuple:
             temperature=0.0,
         )
         data = json.loads(resp.choices[0].message.content)
-        faithful = data.get("faithful", True)
+        faithful = data.get("faithful")
+        if not isinstance(faithful, bool):
+            raise ValueError("Missing boolean faithfulness result")
         missing  = data.get("missing_concepts", [])
         print(f"    faithfulness: {'✓' if faithful else '✗'} {data.get('verdict','')}")
         return faithful, missing
     except Exception as e:
         print(f"    [faithfulness check error] {e}")
-        return True, []
+        return False, ["Faithfulness could not be verified"]
 
 
 def _build_reference_file(title: str, text: str) -> str:
@@ -1067,6 +1095,8 @@ def apply_reclassification(all_items: list, indices: list[int]) -> int:
 
 def _classify_body(skill_name: str, body: str) -> tuple:
     """Step 1: classify (done once). Returns (all_items, type_counts)."""
+    if not body.strip():
+        raise ValueError("Skill body must not be empty")
     sections = segment_body(body)
     print(f"  segment: {len(sections)} sections")
 
@@ -1188,7 +1218,7 @@ def restructure_body(skill_name: str, body: str, *,
     print("\n  [Step 1] Content classification...")
     all_items, _ = _classify_body(skill_name, body)
 
-    # Step 1.5: load original reference files
+    # Step 1.5: use the caller's original reference files.
     raw_refs = original_references or []
     if raw_refs:
         raw_ref_tokens = sum(f["tokens"] for f in raw_refs)
